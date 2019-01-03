@@ -21,8 +21,8 @@ let parse path =
 
 let () =
   match Sys.argv with
-  | [| _; "-target"; target; "-o"; _output; input |] ->
-    let _backend = match target with
+  | [| _; "-target"; target; "-o"; output; input |] ->
+    let backend = match target with
       | "amd64" -> Gen_amd64.emit
       | "byte" -> Gen_byte.emit
       | _ ->
@@ -31,7 +31,9 @@ let () =
     in
     let ast = parse input in
     let ir = Ir_gen.lower ast in
-    ignore (ir);
+    let chan = open_out output in
+    backend ir chan;
+    close_out chan
   | _ ->
     Printf.eprintf "Usage: %s -target [target] -o [out] [in]\n" (Sys.argv.(0));
     exit 1
