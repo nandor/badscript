@@ -1,0 +1,11 @@
+(executable
+  (name compiler)
+  (public_name compiler)
+  (flags -w -39)
+  (modules_without_implementation ast ir))
+
+(menhir
+ (modules parser))
+
+(ocamllex
+  (modules lexer))

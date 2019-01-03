@@ -1,0 +1,7 @@
+lib: [
+  "_build/install/default/lib/badscript/META" {"META"}
+  "_build/install/default/lib/badscript/opam" {"opam"}
+]
+bin: [
+  "_build/install/default/bin/compiler" {"compiler"}
+]
