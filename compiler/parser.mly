@@ -6,6 +6,7 @@
 %token ADD SUB MUL DIV
 %token <string> IDENT
 %token <int>    INT
+%token <float>  FLOAT
 
 %left ADD SUB
 %left MUL DIV
@@ -47,6 +48,7 @@ bs_atom:
   | e = bs_atom LPAREN args = bs_args RPAREN { Call(e, args) }
   | v = INT { Int v }
   | v = IDENT { Ident v }
+  | v = FLOAT { Float v }
 
 bs_args:
   | arg = bs_expr COMMA args = bs_args { arg :: args }

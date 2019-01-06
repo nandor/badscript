@@ -10,6 +10,7 @@ type unop =
 
 type expr =
   | Int of int
+  | Float of float
   | Ident of string
   | Call of expr * expr list
   | Binop of binop * expr * expr

@@ -7,13 +7,33 @@ let builtin_code =
   [ "\t.data"
   ; "Lfmt_int:"
   ; "\t.asciz \"%lld\\n\""
+  ; "Lfmt_flt:"
+  ; "\t.asciz \"%f\\n\""
+  ; "Lfmt_ptr:"
+  ; "\t.asciz \"%p\\n\""
   ; "\t.text"
   ; "__print:"
   ; "\tpushq %rbp"
   ; "\tmovq %rsp, %rbp"
-  ; "\tleaq Lfmt_int(%rip), %rdi"
+  ; "\tmovq 24(%rbp), %rax"
+  ; "\tcmpq $1, %rax"
+  ; "\tjle  1f"
+  ; "\tleaq Lfmt_ptr(%rip), %rdi"
   ; "\tmovq 16(%rbp), %rsi"
-  ; "\txorq %rax, %rax"
+  ; "\tmovq $0, %rax"
+  ; "\tjmp 3f"
+  ; "1:"
+  ; "\tcmpq $0, %rax"
+  ; "\tje  0f"
+  ; "\tmovaps 16(%rbp), %xmm0"
+  ; "\tleaq Lfmt_flt(%rip), %rdi"
+  ; "\tmovq $1, %rax"
+  ; "\tjmp 3f"
+  ; "0:"
+  ; "\tmovq 16(%rbp), %rsi"
+  ; "\tleaq Lfmt_int(%rip), %rdi"
+  ; "\tmovq $0, %rax"
+  ; "3:"
   ; "\tcallq _printf"
   ; "\txorq %rax, %rax"
   ; "\txorq %rbx, %rbx"
@@ -66,7 +86,8 @@ let rsp = Reg RSP
 let rbp = Reg RBP
 
 let tag_int = Imm 0
-let tag_fn  = Imm 1
+let tag_flt = Imm 1
+let tag_fn  = Imm 2
 
 type opcode =
   | Pushq
@@ -97,6 +118,7 @@ type context =
   ; mutable scopes: scope
   ; mutable tmp: int
   ; mutable max_tmp: int
+  ; mutable const_float: float list
   }
 
 let emit_inst ctx op args =
@@ -106,6 +128,11 @@ let rec emit_expr ctx = function
   | Int(n) ->
     emit_inst ctx Movq [tag_int; rax];
     emit_inst ctx Movq [Imm n; rbx]
+  | Float(v) ->
+    let n = List.length ctx.const_float in
+    ctx.const_float <- v :: ctx.const_float;
+    emit_inst ctx Movq [tag_flt; rax];
+    emit_inst ctx Movq [Rip ("Lcst" ^ string_of_int n); rbx]
   | Ident(name) ->
     let rec lookup_ident = function
       | Scope(vars, next) ->
@@ -205,6 +232,7 @@ let emit prog c =
         ; scopes = Scope(arg_scope 0 func.args, global)
         ; tmp = 0
         ; max_tmp = 0
+        ; const_float = []
         }
     in
     emit_inst ctx Pushq [rsp];
@@ -216,17 +244,17 @@ let emit prog c =
       | Inst(op, args) ->
         Printf.fprintf c "\t%s\t"
           (match op with
-          | Pushq -> "pushq"
-          | Popq  -> "popq "
-          | Addq  -> "addq "
-          | Subq  -> "subq "
-          | Movq  -> "movq "
-          | Leaq  -> "leaq "
-          | Callq -> "callq"
-          | Imulq -> "imulq"
-          | Idivq -> "idivq"
-          | Xchgq -> "xchgq"
-          | Ret   -> "ret  "
+          | Pushq  -> "pushq "
+          | Popq   -> "popq  "
+          | Addq   -> "addq  "
+          | Subq   -> "subq  "
+          | Movq   -> "movq  "
+          | Leaq   -> "leaq  "
+          | Callq  -> "callq "
+          | Imulq  -> "imulq "
+          | Idivq  -> "idivq "
+          | Xchgq  -> "xchgq "
+          | Ret    -> "ret   "
           );
         args
           |> List.map
@@ -244,6 +272,15 @@ let emit prog c =
         Printf.fprintf c "%s:\n" n
     );
     Printf.fprintf c "\n";
+    if ctx.const_float <> [] then begin
+      Printf.fprintf c "\t.data\n";
+      ignore (List.fold_right (fun f n->
+        Printf.fprintf c "Lcst%d:\n" n;
+        Printf.fprintf c "\t.double\t%f\n" f;
+        n + 1
+      ) ctx.const_float 0);
+      Printf.fprintf c "\n";
+    end;
   );
   output_string c (String.concat "\n" builtin_code);
   output_string c "\n";
