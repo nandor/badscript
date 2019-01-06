@@ -1,8 +1,19 @@
 
+type binop =
+  | Add
+  | Sub
+  | Mul
+  | Div
+
+type unop =
+  | Neg
+
 type expr =
   | Int of int
   | Ident of string
   | Call of expr * expr list
+  | Binop of binop * expr * expr
+  | Unop of unop * expr
 
 type stat =
   | Expr of expr

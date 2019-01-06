@@ -18,6 +18,10 @@ rule token = parse
   | '}'                     { RBRACE }
   | ','                     { COMMA }
   | ';'                     { SEMI }
+  | '+'                     { ADD }
+  | '-'                     { SUB }
+  | '*'                     { MUL }
+  | '/'                     { DIV }
   | "func"                  { FUNC }
   | id as name              { IDENT name }
   | num as n                { INT (int_of_string n) }

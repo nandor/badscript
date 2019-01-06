@@ -3,9 +3,13 @@
 %token EOF
 %token LPAREN, RPAREN, LBRACE, RBRACE, COMMA, SEMI
 %token FUNC
-%token <float>  FLOAT
+%token ADD SUB MUL DIV
 %token <string> IDENT
 %token <int>    INT
+
+%left ADD SUB
+%left MUL DIV
+%nonassoc NEG
 
 %start <Ast.program> bs_program
 
@@ -32,7 +36,15 @@ bs_stat:
   | stat = bs_expr { Expr(stat) }
 
 bs_expr:
-  | e = bs_expr LPAREN args = bs_args RPAREN { Call(e, args) }
+  | e1 = bs_expr ADD e2 = bs_expr { Binop(Add, e1, e2) }
+  | e1 = bs_expr SUB e2 = bs_expr { Binop(Sub, e1, e2) }
+  | e1 = bs_expr MUL e2 = bs_expr { Binop(Mul, e1, e2) }
+  | e1 = bs_expr DIV e2 = bs_expr { Binop(Div, e1, e2) }
+  | SUB e = bs_expr { Unop(Neg, e) } %prec NEG
+  | e = bs_atom { e }
+
+bs_atom:
+  | e = bs_atom LPAREN args = bs_args RPAREN { Call(e, args) }
   | v = INT { Int v }
   | v = IDENT { Ident v }
 

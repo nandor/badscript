@@ -35,16 +35,20 @@ type section = Text
 type reg =
   | RAX
   | RBX
+  | RDX
+  | RSI
+  | RDI
   | RSP
   | RBP
-  | XMM0
 
 let string_of_reg = function
   | RAX -> "rax"
   | RBX -> "rbx"
+  | RDX -> "rdx"
+  | RSI -> "rsi"
+  | RDI -> "rdi"
   | RSP -> "rsp"
   | RBP -> "rbp"
-  | XMM0 -> "xmm0"
 
 type arg =
   | Reg of reg
@@ -55,6 +59,9 @@ type arg =
 
 let rax = Reg RAX
 let rbx = Reg RBX
+let rdx = Reg RDX
+let rsi = Reg RSI
+let rdi = Reg RDI
 let rsp = Reg RSP
 let rbp = Reg RBP
 
@@ -65,9 +72,13 @@ type opcode =
   | Pushq
   | Popq
   | Addq
+  | Subq
   | Movq
   | Leaq
   | Callq
+  | Imulq
+  | Idivq
+  | Xchgq
   | Ret
 
 type loc =
@@ -83,7 +94,9 @@ type scope =
 
 type context =
   { mutable insts: inst list
-  ; mutable scopes : scope
+  ; mutable scopes: scope
+  ; mutable tmp: int
+  ; mutable max_tmp: int
   }
 
 let emit_inst ctx op args =
@@ -122,6 +135,48 @@ let rec emit_expr ctx = function
     emit_expr ctx callee;
     emit_inst ctx Callq [Ind RBX];
     emit_inst ctx Addq [Imm ((List.length args) * 16); rsp]
+  | Binop(op, lhs, rhs) ->
+    emit_expr ctx lhs;
+
+    let tmp = ctx.tmp in
+    let ptr_tag = -tmp * 16 - 24 in
+    let ptr_val = -tmp * 16 - 16 in
+    ctx.tmp <- tmp + 1;
+    ctx.max_tmp <- max ctx.max_tmp ctx.tmp;
+
+    emit_inst ctx Movq [rax; Rbp ptr_tag];
+    emit_inst ctx Movq [rbx; Rbp ptr_val];
+
+    emit_expr ctx rhs;
+    ctx.tmp <- tmp;
+
+    emit_inst ctx Movq [Rbp ptr_tag; rsi];
+    emit_inst ctx Movq [Rbp ptr_val; rdi];
+
+    (* At this point: tagLHS: rax; tagRHS: rsi; valLHS: rbx; valRHS: rdi *)
+    (match op with
+    | Add ->
+      (* rbx <- rbx + rdi *)
+      emit_inst ctx Addq [rdi; rbx]
+    | Sub ->
+      (* rbx <- rdi - rbx *)
+      emit_inst ctx Subq [rbx; rdi];
+      emit_inst ctx Movq [rdi; rbx]
+    | Div ->
+      (* rax <- rdx:rax / rbx; rbx <- rax *)
+      emit_inst ctx Xchgq [rax; rdi];
+      emit_inst ctx Movq [Imm 0; rdx];
+      emit_inst ctx Idivq [rbx];
+      emit_inst ctx Movq [rax; rbx];
+      emit_inst ctx Xchgq [rax; rdi];
+    | Mul ->
+      (* rdx:rax <- rax * rdi; rbx <- rax *)
+      emit_inst ctx Xchgq [rax; rbx];
+      emit_inst ctx Imulq [rdi];
+      emit_inst ctx Xchgq [rbx; rax]
+    )
+  | Unop(op, arg) ->
+    failwith "unop"
 
 let rec emit_seq ctx = function
   | Expr e    -> emit_expr ctx e
@@ -145,7 +200,13 @@ let emit prog c =
   prog |> List.iter (fun func ->
     emit_section c Text;
     emit_label c func.name;
-    let ctx = { insts = []; scopes = Scope(arg_scope 0 func.args, global) } in
+    let ctx =
+        { insts = []
+        ; scopes = Scope(arg_scope 0 func.args, global)
+        ; tmp = 0
+        ; max_tmp = 0
+        }
+    in
     emit_inst ctx Pushq [rsp];
     emit_inst ctx Movq [rsp; rbp];
     emit_seq ctx func.body;
@@ -158,9 +219,13 @@ let emit prog c =
           | Pushq -> "pushq"
           | Popq  -> "popq "
           | Addq  -> "addq "
+          | Subq  -> "subq "
           | Movq  -> "movq "
           | Leaq  -> "leaq "
           | Callq -> "callq"
+          | Imulq -> "imulq"
+          | Idivq -> "idivq"
+          | Xchgq -> "xchgq"
           | Ret   -> "ret  "
           );
         args
