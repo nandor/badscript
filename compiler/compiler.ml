@@ -19,22 +19,22 @@ let parse path =
   close_in input;
   ast
 
-let emit func ast output =
-  let chan = open_out output in
-  func ast chan;
-  close_out chan
-
 let () =
   match Sys.argv with
   | [| _; "-target"; target; "-o"; output; input |] ->
-    let backend = match target with
-      | "amd64" -> emit Gen_amd64.emit
-      | "byte" -> emit Gen_byte.emit
-      | _ ->
-        Printf.eprintf "Invalid target: %s\n" target;
-        exit 1
-    in
-    backend (parse input) output;
+    (match target with
+    | "amd64" ->
+      let chan = open_out output in
+      Gen_amd64.emit (parse input) chan;
+      close_out chan
+    | "byte" ->
+      let chan = open_out_bin output in
+      Gen_byte.emit (parse input) chan;
+      close_out chan
+    | _ ->
+      Printf.eprintf "Invalid target: %s\n" target;
+      exit 1
+    )
   | _ ->
     Printf.eprintf "Usage: %s -target [target] -o [out] [in]\n" (Sys.argv.(0));
     exit 1

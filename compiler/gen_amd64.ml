@@ -91,7 +91,7 @@ let emit_label ctx label =
 let make_label ctx =
   let idx = ctx.next_label in
   ctx.next_label <- idx + 1;
-  "L" ^ ctx.func_name ^ string_of_int ctx.next_label
+  "L" ^ ctx.func_name ^ string_of_int idx
 
 let rec emit_expr ctx = function
   | Int(n) ->
@@ -265,6 +265,8 @@ let emit prog c =
     emit_seq ctx func.body;
     emit_inst ctx Addq [FrameSize; rsp];
     emit_inst ctx Popq [rbp];
+    emit_inst ctx Movq [tag_int; rax];
+    emit_inst ctx Movq [Imm 0; rbx];
     emit_inst ctx Ret [];
 
     let temp_size = ctx.max_tmp * 16 in
