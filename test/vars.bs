@@ -1,0 +1,7 @@
+func main()
+{
+  a = 5;
+  b = 6;
+  a = 7;
+  print(a + b)
+}

@@ -62,21 +62,19 @@ type opcode =
   | Jmp
   | Ret
 
-type loc =
-  | Arg of int
-
 type inst =
   | Inst of opcode * arg list
   | Label of string
 
 type scope =
-  | Scope of (string * loc) list * scope
+  | Scope of string * int * scope
+  | Args of (string * int) list * scope
   | Global of string list
 
 type context =
   { mutable insts: inst list
   ; mutable scopes: scope
-  ; mutable tmp: int
+  ; mutable num_tmp: int
   ; mutable max_tmp: int
   ; mutable const_float: float list
   ; mutable next_label: int
@@ -105,14 +103,19 @@ let rec emit_expr ctx = function
     emit_inst ctx Movq [Rip ("Lcst" ^ string_of_int n); rbx]
   | Ident(name) ->
     let rec lookup_ident = function
-      | Scope(vars, next) ->
+      | Args(vars, next) ->
         (match List.assoc_opt name vars with
-        | Some (Arg n) ->
+        | Some n ->
           emit_inst ctx Movq [Rbp (n * 16 + 8 + 16); rax];
           emit_inst ctx Movq [Rbp (n * 16 + 0 + 16); rbx]
         | None ->
           lookup_ident next
         )
+      | Scope(var, n, _) when var = name ->
+        emit_inst ctx Movq [Rbp (-n * 16 - 8 - 16); rax];
+        emit_inst ctx Movq [Rbp (-n * 16 - 0 - 16); rbx]
+      | Scope(_, _, next) ->
+        lookup_ident next
       | Global globals when List.mem name globals ->
         emit_inst ctx Movq [tag_fn; rax];
         emit_inst ctx Leaq [Rip name; rbx]
@@ -120,7 +123,7 @@ let rec emit_expr ctx = function
         emit_inst ctx Movq [tag_fn; rax];
         emit_inst ctx Leaq [Rip ("__" ^ name ^ "$"); rbx]
       | Global _ ->
-        emit_inst ctx Movq [tag_fn; rax];
+        emit_inst ctx Movq [tag_int; rax];
         emit_inst ctx Movq [Imm 0; rbx]
     in lookup_ident ctx.scopes
   | Call(callee, args) ->
@@ -135,20 +138,20 @@ let rec emit_expr ctx = function
   | Binop(op, lhs, rhs) ->
     emit_expr ctx lhs;
 
-    let tmp = ctx.tmp in
-    let ptr_tag = -tmp * 16 - 24 in
-    let ptr_val = -tmp * 16 - 16 in
-    ctx.tmp <- tmp + 1;
-    ctx.max_tmp <- max ctx.max_tmp ctx.tmp;
+    let n = ctx.num_tmp in
+    let ptr_tag = Rbp (-n * 16 - 8 - 16) in
+    let ptr_val = Rbp (-n * 16 - 0 - 16) in
+    ctx.num_tmp <- n + 1;
+    ctx.max_tmp <- max ctx.max_tmp ctx.num_tmp;
 
-    emit_inst ctx Movq [rax; Rbp ptr_tag];
-    emit_inst ctx Movq [rbx; Rbp ptr_val];
+    emit_inst ctx Movq [rax; ptr_tag];
+    emit_inst ctx Movq [rbx; ptr_val];
 
     emit_expr ctx rhs;
-    ctx.tmp <- tmp;
+    ctx.num_tmp <- n;
 
-    emit_inst ctx Movq [Rbp ptr_tag; rsi];
-    emit_inst ctx Movq [Rbp ptr_val; rdi];
+    emit_inst ctx Movq [ptr_tag; rsi];
+    emit_inst ctx Movq [ptr_val; rdi];
 
     (* At this point: tagLHS: rax; tagRHS: rsi; valLHS: rbx; valRHS: rdi *)
     (match op with
@@ -161,8 +164,36 @@ let rec emit_expr ctx = function
     failwith "unop"
 
 let rec emit_seq ctx = function
-  | Expr e    -> emit_expr ctx e
-  | Seq(f, s) -> emit_seq ctx f; emit_seq ctx s
+  | Expr e ->
+    emit_expr ctx e
+  | Seq(f, s) ->
+    emit_seq ctx f;
+    emit_seq ctx s
+  | Assign(name, expr) ->
+    emit_expr ctx expr;
+    let rec assign_ident = function
+      | Args(vars, next) ->
+        (match List.assoc_opt name vars with
+        | Some n ->
+          emit_inst ctx Callq [Sym "__arg_error$"]
+        | None ->
+          assign_ident next
+        )
+      | Scope(var, n, _) when var = name ->
+        emit_inst ctx Movq [rax; Rbp (-n * 16 - 8 - 16)];
+        emit_inst ctx Movq [rbx; Rbp (-n * 16 - 0 - 16)]
+      | Scope(_, _, next) ->
+        assign_ident next
+      | Global _ ->
+        let n = ctx.num_tmp in
+        ctx.num_tmp <- n + 1;
+        ctx.max_tmp <- max ctx.max_tmp ctx.num_tmp;
+        ctx.scopes <- Scope(name, n, ctx.scopes);
+        emit_inst ctx Movq [rax; Rbp (-n * 16 - 8 - 16)];
+        emit_inst ctx Movq [rbx; Rbp (-n * 16 - 0 - 16)]
+    in
+    assign_ident ctx.scopes
+
 
 let emit_section c section =
   Printf.fprintf c "\t%s\n"
@@ -175,7 +206,7 @@ let emit_label c name =
 
 let emit prog c =
   let rec arg_scope n = function
-    | arg :: args -> (arg, Arg n) :: arg_scope (n + 1) args
+    | arg :: args -> (arg, n) :: arg_scope (n + 1) args
     | [] -> []
   in
   let global = Global (List.map (fun func -> func.name) prog) in
@@ -185,8 +216,8 @@ let emit prog c =
     emit_label c func.name;
     let ctx =
         { insts = []
-        ; scopes = Scope(arg_scope 0 func.args, global)
-        ; tmp = 0
+        ; scopes = Args(arg_scope 0 func.args, global)
+        ; num_tmp = 0
         ; max_tmp = 0
         ; const_float = []
         ; next_label = 0
@@ -200,6 +231,8 @@ let emit prog c =
     emit_inst ctx Addq [FrameSize; rsp];
     emit_inst ctx Popq [rbp];
     emit_inst ctx Ret [];
+
+    let temp_size = ctx.max_tmp * 16 in
     ctx.insts |> List.rev |> List.iter (function
       | Inst(op, args) ->
         Printf.fprintf c "\t%s\t"
@@ -229,7 +262,7 @@ let emit prog c =
             | Ind reg -> "*%" ^ string_of_reg reg
             | Rip name -> name ^ "(%rip)"
             | Rbp off -> string_of_int off ^ "(%rbp)"
-            | FrameSize -> "$" ^ string_of_int (ctx.max_tmp * 16)
+            | FrameSize -> "$" ^ string_of_int temp_size
             | Sym name -> name
             )
           |> String.concat ", "

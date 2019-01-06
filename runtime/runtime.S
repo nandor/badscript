@@ -5,8 +5,11 @@ Lfmt_flt:
   .asciz "%f\n"
 Lfmt_ptr:
   .asciz "%p\n"
+
 Ltype_error:
-  .asciz "What are we doing here, JavaScript?"
+  .asciz "TypeError: What are we doing here, JavaScript?"
+Larg_error:
+  .asciz "Assigning to argument"
 
   .text
   .global __print$
@@ -43,17 +46,17 @@ __add$:
   cmpq $1, %rax
   je 1f
   jl 2f
-  jmp _type_error
+  jmp _type_error$
 2:
   cmpq $1, %rsi
   je 3f
   jl 4f
-  jmp _type_error
+  jmp _type_error$
 1:
   cmpq $1, %rsi
   je 5f
   jl 6f
-  jmp _type_error
+  jmp _type_error$
 3:
   cvtsi2sd %rbx, %xmm1
   movq %rdi, %xmm0
@@ -82,17 +85,17 @@ __sub$:
   cmpq $1, %rax
   je 1f
   jl 2f
-  jmp _type_error
+  jmp _type_error$
 2:
   cmpq $1, %rsi
   je 3f
   jl 4f
-  jmp _type_error
+  jmp _type_error$
 1:
   cmpq $1, %rsi
   je 5f
   jl 6f
-  jmp _type_error
+  jmp _type_error$
 3:
   cvtsi2sd %rbx, %xmm1
   movq %rdi, %xmm0
@@ -122,17 +125,17 @@ __mul$:
   cmpq $1, %rax
   je 1f
   jl 2f
-  jmp _type_error
+  jmp _type_error$
 2:
   cmpq $1, %rsi
   je 3f
   jl 4f
-  jmp _type_error
+  jmp _type_error$
 1:
   cmpq $1, %rsi
   je 5f
   jl 6f
-  jmp _type_error
+  jmp _type_error$
 3:
   cvtsi2sd %rbx, %xmm1
   movq %rdi, %xmm0
@@ -163,17 +166,17 @@ __div$:
   cmpq $1, %rax
   je 1f
   jl 2f
-  jmp _type_error
+  jmp _type_error$
 2:
   cmpq $1, %rsi
   je 3f
   jl 4f
-  jmp _type_error
+  jmp _type_error$
 1:
   cmpq $1, %rsi
   je 5f
   jl 6f
-  jmp _type_error
+  jmp _type_error$
 3:
   cvtsi2sd %rbx, %xmm1
   movq %rdi, %xmm0
@@ -201,10 +204,18 @@ __div$:
   movq %xmm0, %rbx
   retq
 
-_type_error:
+_type_error$:
   pushq %rbp
   movq %rsp, %rbp
   leaq Ltype_error(%rip), %rdi
+  callq _puts
+  popq %rbp
+  jmp _abort
+
+_arg_error$:
+  pushq %rbp
+  movq %rsp, %rbp
+  leaq Larg_error(%rip), %rdi
   callq _puts
   popq %rbp
   jmp _abort

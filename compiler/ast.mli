@@ -18,6 +18,7 @@ type expr =
 
 type stat =
   | Expr of expr
+  | Assign of string * expr
   | Seq of stat * stat
 
 type func =

@@ -22,6 +22,7 @@ rule token = parse
   | '-'                     { SUB }
   | '*'                     { MUL }
   | '/'                     { DIV }
+  | '='                     { ASSIGN }
   | "func"                  { FUNC }
   | id as name              { IDENT name }
   | '0'                     { INT 0 }

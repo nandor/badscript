@@ -4,6 +4,7 @@
 %token LPAREN, RPAREN, LBRACE, RBRACE, COMMA, SEMI
 %token FUNC
 %token ADD SUB MUL DIV
+%token ASSIGN
 %token <string> IDENT
 %token <int>    INT
 %token <float>  FLOAT
@@ -35,6 +36,7 @@ bs_stats:
 
 bs_stat:
   | stat = bs_expr { Expr(stat) }
+  | name = IDENT ASSIGN e = bs_expr { Assign(name, e) }
 
 bs_expr:
   | e1 = bs_expr ADD e2 = bs_expr { Binop(Add, e1, e2) }
