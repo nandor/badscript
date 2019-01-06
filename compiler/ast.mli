@@ -4,6 +4,7 @@ type binop =
   | Sub
   | Mul
   | Div
+  | Ne
 
 type unop =
   | Neg
@@ -20,6 +21,7 @@ type stat =
   | Expr of expr
   | Assign of string * expr
   | Seq of stat * stat
+  | While of expr * stat
 
 type func =
   { name: string

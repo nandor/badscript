@@ -18,5 +18,5 @@ func main()
   print(6 / 2);
   print(6 / 2.0);
   print(6.0 / 2);
-  print(6.0 / 2.0)
+  print(6.0 / 2.0);
 }

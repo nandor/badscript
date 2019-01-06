@@ -2,11 +2,11 @@
 func other(x, y)
 {
   print(x);
-  print(y)
+  print(y);
 }
 
 func main()
 {
   print(5);
-  other(6, 7)
+  other(6, 7);
 }

@@ -1,0 +1,10 @@
+func main()
+{
+  i = 0;
+  a = 10;
+  while (i != 100) {
+    i = i + 1;
+    a = a + 6;
+  }
+  print(a);
+}

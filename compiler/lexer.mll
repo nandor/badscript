@@ -23,7 +23,9 @@ rule token = parse
   | '*'                     { MUL }
   | '/'                     { DIV }
   | '='                     { ASSIGN }
+  | "!="                    { NE }
   | "func"                  { FUNC }
+  | "while"                 { WHILE }
   | id as name              { IDENT name }
   | '0'                     { INT 0 }
   | num '.' ['0'-'9']+      { FLOAT (float_of_string (Lexing.lexeme lexbuf))}

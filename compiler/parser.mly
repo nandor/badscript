@@ -2,15 +2,17 @@
 
 %token EOF
 %token LPAREN, RPAREN, LBRACE, RBRACE, COMMA, SEMI
-%token FUNC
+%token FUNC, WHILE
 %token ADD SUB MUL DIV
 %token ASSIGN
+%token NE
 %token <string> IDENT
 %token <int>    INT
 %token <float>  FLOAT
 
 %left ADD SUB
 %left MUL DIV
+%nonassoc NE
 %nonassoc NEG
 
 %start <Ast.program> bs_program
@@ -31,18 +33,20 @@ bs_names:
   | { [] }
 
 bs_stats:
-  | stat = bs_stat SEMI stats = bs_stats { Seq(stat, stats) }
+  | stat = bs_stat stats = bs_stats { Seq(stat, stats) }
   | stat = bs_stat { stat }
 
 bs_stat:
-  | stat = bs_expr { Expr(stat) }
-  | name = IDENT ASSIGN e = bs_expr { Assign(name, e) }
+  | stat = bs_expr SEMI { Expr(stat) }
+  | name = IDENT ASSIGN e = bs_expr SEMI { Assign(name, e) }
+  | WHILE LPAREN c = bs_expr RPAREN LBRACE b = bs_stats RBRACE { While(c, b) }
 
 bs_expr:
   | e1 = bs_expr ADD e2 = bs_expr { Binop(Add, e1, e2) }
   | e1 = bs_expr SUB e2 = bs_expr { Binop(Sub, e1, e2) }
   | e1 = bs_expr MUL e2 = bs_expr { Binop(Mul, e1, e2) }
   | e1 = bs_expr DIV e2 = bs_expr { Binop(Div, e1, e2) }
+  | e1 = bs_expr NE  e2 = bs_expr { Binop(Ne, e1, e2) }
   | SUB e = bs_expr { Unop(Neg, e) } %prec NEG
   | e = bs_atom { e }
 

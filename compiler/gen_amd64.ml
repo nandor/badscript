@@ -57,6 +57,7 @@ type opcode =
   | Xchgq
   | Cmpq
   | Je
+  | Jne
   | Jge
   | Jle
   | Jmp
@@ -159,6 +160,22 @@ let rec emit_expr ctx = function
     | Sub -> emit_inst ctx Callq [Sym "__sub$"]
     | Div -> emit_inst ctx Callq [Sym "__div$"]
     | Mul -> emit_inst ctx Callq [Sym "__mul$"]
+    | Ne ->
+      let lbl_true = make_label ctx in
+      let lbl_end = make_label ctx in
+      emit_inst ctx Cmpq [rax; rsi];
+      emit_inst ctx Jne [Sym lbl_true];
+      emit_inst ctx Cmpq [rbx; rdi];
+      emit_inst ctx Jne [Sym lbl_true];
+
+      emit_inst ctx Movq [Imm 0; rax];
+      emit_inst ctx Movq [Imm 0; rbx];
+      emit_inst ctx Jmp [Sym lbl_end];
+
+      emit_label ctx lbl_true;
+      emit_inst ctx Movq [Imm 0; rax];
+      emit_inst ctx Movq [Imm 1; rbx];
+      emit_label ctx lbl_end
     )
   | Unop(op, arg) ->
     failwith "unop"
@@ -193,7 +210,24 @@ let rec emit_seq ctx = function
         emit_inst ctx Movq [rbx; Rbp (-n * 16 - 0 - 16)]
     in
     assign_ident ctx.scopes
+  | While(cond, body) ->
+    let lbl_loop_entry = make_label ctx in
+    let lbl_loop_exit = make_label ctx in
 
+    let { scopes; num_tmp } = ctx in
+
+    emit_label ctx lbl_loop_entry;
+    emit_expr ctx cond;
+    emit_inst ctx Cmpq [Imm 0; rbx];
+    emit_inst ctx Je [Sym lbl_loop_exit];
+
+    emit_seq ctx body;
+
+    emit_inst ctx Jmp [Sym lbl_loop_entry];
+    emit_label ctx lbl_loop_exit;
+
+    ctx.scopes <- scopes;
+    ctx.num_tmp <- num_tmp
 
 let emit_section c section =
   Printf.fprintf c "\t%s\n"
@@ -249,6 +283,7 @@ let emit prog c =
           | Xchgq  -> "xchgq "
           | Cmpq   -> "cmpq  "
           | Je     -> "je    "
+          | Jne    -> "jne   "
           | Jge    -> "jge   "
           | Jle    -> "jle   "
           | Jmp    -> "jmp   "
