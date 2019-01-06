@@ -3,7 +3,7 @@ open Ast
 
 let builtins = ["print"]
 
-type section = Text
+type section = Text | Data
 
 type reg =
   | RAX
@@ -233,6 +233,7 @@ let emit_section c section =
   Printf.fprintf c "\t%s\n"
     (match section with
     | Text -> ".text"
+    | Data -> ".data"
     )
 
 let emit_label c name =
@@ -308,7 +309,7 @@ let emit prog c =
     );
     Printf.fprintf c "\n";
     if ctx.const_float <> [] then begin
-      Printf.fprintf c "\t.data\n";
+      emit_section c Data;
       ignore (List.fold_right (fun f n->
         emit_label c ("Lcst" ^ string_of_int n);
         Printf.fprintf c "\t.double\t%f\n" f;
