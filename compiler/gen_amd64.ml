@@ -3,63 +3,6 @@ open Ast
 
 let builtins = ["print"]
 
-let builtin_code =
-  [ "\t.data"
-  ; "Lfmt_int:"
-  ; "\t.asciz \"%lld\\n\""
-  ; "Lfmt_flt:"
-  ; "\t.asciz \"%f\\n\""
-  ; "Lfmt_ptr:"
-  ; "\t.asciz \"%p\\n\""
-  ; "Ltype_error:"
-  ; "\t.asciz \"What are we doing here, JavaScript?\""
-  ; "\t.text"
-  ; "__print:"
-  ; "\tpushq %rbp"
-  ; "\tmovq %rsp, %rbp"
-  ; "\tmovq 24(%rbp), %rax"
-  ; "\tcmpq $1, %rax"
-  ; "\tjle  1f"
-  ; "\tleaq Lfmt_ptr(%rip), %rdi"
-  ; "\tmovq 16(%rbp), %rsi"
-  ; "\tmovq $0, %rax"
-  ; "\tjmp 3f"
-  ; "1:"
-  ; "\tcmpq $0, %rax"
-  ; "\tje  0f"
-  ; "\tmovaps 16(%rbp), %xmm0"
-  ; "\tleaq Lfmt_flt(%rip), %rdi"
-  ; "\tmovq $1, %rax"
-  ; "\tjmp 3f"
-  ; "0:"
-  ; "\tmovq 16(%rbp), %rsi"
-  ; "\tleaq Lfmt_int(%rip), %rdi"
-  ; "\tmovq $0, %rax"
-  ; "3:"
-  ; "\tcallq _printf"
-  ; "\txorq %rax, %rax"
-  ; "\txorq %rbx, %rbx"
-  ; "\tpopq %rbp"
-  ; "\tretq"
-  ; ""
-  ; "\t.global _main"
-  ; "_main:"
-  ; "\tpushq %rbp"
-  ; "\tmovq %rsp, %rbp"
-  ; "\tcallq main"
-  ; "\tmovq $0, %rax"
-  ; "\tpopq %rbp"
-  ; "\tretq"
-  ; "\t.global _type_error"
-  ; "_type_error:"
-  ; "\tpushq %rbp"
-  ; "\tmovq %rsp, %rbp"
-  ; "\tleaq Ltype_error(%rip), %rdi"
-  ; "\tcallq _puts"
-  ; "\tpopq %rbp"
-  ; "\tjmp _abort"
-  ]
-
 type section = Text
 
 type reg =
@@ -116,6 +59,7 @@ type opcode =
   | Je
   | Jge
   | Jle
+  | Jmp
   | Ret
 
 type loc =
@@ -174,7 +118,7 @@ let rec emit_expr ctx = function
         emit_inst ctx Leaq [Rip name; rbx]
       | Global globals when List.mem name builtins ->
         emit_inst ctx Movq [tag_fn; rax];
-        emit_inst ctx Leaq [Rip ("__" ^ name); rbx]
+        emit_inst ctx Leaq [Rip ("__" ^ name ^ "$"); rbx]
       | Global _ ->
         emit_inst ctx Movq [tag_fn; rax];
         emit_inst ctx Movq [Imm 0; rbx]
@@ -206,39 +150,13 @@ let rec emit_expr ctx = function
     emit_inst ctx Movq [Rbp ptr_tag; rsi];
     emit_inst ctx Movq [Rbp ptr_val; rdi];
 
-    let lbl_okay = make_label ctx in
-    let lbl_float = make_label ctx in
-    let lbl_end = make_label ctx in
-
-    emit_inst ctx Cmpq [tag_flt; rax];
-    emit_inst ctx Jle [Sym lbl_okay];
-    emit_inst ctx Callq [Sym "_type_error"];
-    emit_label ctx lbl_okay;
-
     (* At this point: tagLHS: rax; tagRHS: rsi; valLHS: rbx; valRHS: rdi *)
     (match op with
-    | Add ->
-      (* rbx <- rbx + rdi *)
-      emit_inst ctx Addq [rdi; rbx]
-    | Sub ->
-      (* rbx <- rdi - rbx *)
-      emit_inst ctx Subq [rbx; rdi];
-      emit_inst ctx Movq [rdi; rbx]
-    | Div ->
-      (* rax <- rdx:rax / rbx; rbx <- rax *)
-      emit_inst ctx Xchgq [rax; rdi];
-      emit_inst ctx Movq [Imm 0; rdx];
-      emit_inst ctx Idivq [rbx];
-      emit_inst ctx Movq [rax; rbx];
-      emit_inst ctx Xchgq [rax; rdi];
-    | Mul ->
-      (* rdx:rax <- rax * rdi; rbx <- rax *)
-      emit_inst ctx Xchgq [rax; rbx];
-      emit_inst ctx Imulq [rdi];
-      emit_inst ctx Xchgq [rbx; rax]
-    );
-
-    emit_label ctx lbl_end
+    | Add -> emit_inst ctx Callq [Sym "__add$"]
+    | Sub -> emit_inst ctx Callq [Sym "__sub$"]
+    | Div -> emit_inst ctx Callq [Sym "__div$"]
+    | Mul -> emit_inst ctx Callq [Sym "__mul$"]
+    )
   | Unop(op, arg) ->
     failwith "unop"
 
@@ -262,6 +180,7 @@ let emit prog c =
   in
   let global = Global (List.map (fun func -> func.name) prog) in
   prog |> List.iter (fun func ->
+    if func.name = "main" then output_string c "\t.global main\n";
     emit_section c Text;
     emit_label c func.name;
     let ctx =
@@ -299,6 +218,7 @@ let emit prog c =
           | Je     -> "je    "
           | Jge    -> "jge   "
           | Jle    -> "jle   "
+          | Jmp    -> "jmp   "
           | Ret    -> "ret   "
           );
         args
@@ -315,20 +235,18 @@ let emit prog c =
           |> String.concat ", "
           |> output_string c;
         Printf.fprintf c "\n";
-      | Label n ->
-        Printf.fprintf c "%s:\n" n
+      | Label label ->
+        emit_label c label
     );
     Printf.fprintf c "\n";
     if ctx.const_float <> [] then begin
       Printf.fprintf c "\t.data\n";
       ignore (List.fold_right (fun f n->
-        Printf.fprintf c "Lcst%d:\n" n;
+        emit_label c ("Lcst" ^ string_of_int n);
         Printf.fprintf c "\t.double\t%f\n" f;
         n + 1
       ) ctx.const_float 0);
       Printf.fprintf c "\n";
     end;
   );
-  output_string c "\n";
-  output_string c (String.concat "\n" builtin_code);
-  output_string c "\n";
+  output_string c "\n"

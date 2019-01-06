@@ -1,4 +1,4 @@
 func main()
 {
-  print(1 + main)
+  print(main + 1)
 }

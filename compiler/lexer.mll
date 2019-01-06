@@ -24,6 +24,7 @@ rule token = parse
   | '/'                     { DIV }
   | "func"                  { FUNC }
   | id as name              { IDENT name }
+  | '0'                     { INT 0 }
   | num '.' ['0'-'9']+      { FLOAT (float_of_string (Lexing.lexeme lexbuf))}
   | num                     { INT (int_of_string (Lexing.lexeme lexbuf)) }
   | _ { raise (Error ("Unexpected character: " ^ Lexing.lexeme lexbuf)) }
