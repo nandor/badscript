@@ -11,6 +11,8 @@ let builtin_code =
   ; "\t.asciz \"%f\\n\""
   ; "Lfmt_ptr:"
   ; "\t.asciz \"%p\\n\""
+  ; "Ltype_error:"
+  ; "\t.asciz \"What are we doing here, JavaScript?\""
   ; "\t.text"
   ; "__print:"
   ; "\tpushq %rbp"
@@ -39,7 +41,7 @@ let builtin_code =
   ; "\txorq %rbx, %rbx"
   ; "\tpopq %rbp"
   ; "\tretq"
-  ; "\n"
+  ; ""
   ; "\t.global _main"
   ; "_main:"
   ; "\tpushq %rbp"
@@ -48,6 +50,14 @@ let builtin_code =
   ; "\tmovq $0, %rax"
   ; "\tpopq %rbp"
   ; "\tretq"
+  ; "\t.global _type_error"
+  ; "_type_error:"
+  ; "\tpushq %rbp"
+  ; "\tmovq %rsp, %rbp"
+  ; "\tleaq Ltype_error(%rip), %rdi"
+  ; "\tcallq _puts"
+  ; "\tpopq %rbp"
+  ; "\tjmp _abort"
   ]
 
 type section = Text
@@ -76,6 +86,8 @@ type arg =
   | Imm of int
   | Rip of string
   | Rbp of int
+  | Sym of string
+  | FrameSize
 
 let rax = Reg RAX
 let rbx = Reg RBX
@@ -100,6 +112,10 @@ type opcode =
   | Imulq
   | Idivq
   | Xchgq
+  | Cmpq
+  | Je
+  | Jge
+  | Jle
   | Ret
 
 type loc =
@@ -119,10 +135,20 @@ type context =
   ; mutable tmp: int
   ; mutable max_tmp: int
   ; mutable const_float: float list
+  ; mutable next_label: int
+  ; func_name: string
   }
 
 let emit_inst ctx op args =
   ctx.insts <- Inst(op, args) :: ctx.insts
+
+let emit_label ctx label =
+  ctx.insts <- Label(label) :: ctx.insts
+
+let make_label ctx =
+  let idx = ctx.next_label in
+  ctx.next_label <- idx + 1;
+  "L" ^ ctx.func_name ^ string_of_int ctx.next_label
 
 let rec emit_expr ctx = function
   | Int(n) ->
@@ -180,6 +206,15 @@ let rec emit_expr ctx = function
     emit_inst ctx Movq [Rbp ptr_tag; rsi];
     emit_inst ctx Movq [Rbp ptr_val; rdi];
 
+    let lbl_okay = make_label ctx in
+    let lbl_float = make_label ctx in
+    let lbl_end = make_label ctx in
+
+    emit_inst ctx Cmpq [tag_flt; rax];
+    emit_inst ctx Jle [Sym lbl_okay];
+    emit_inst ctx Callq [Sym "_type_error"];
+    emit_label ctx lbl_okay;
+
     (* At this point: tagLHS: rax; tagRHS: rsi; valLHS: rbx; valRHS: rdi *)
     (match op with
     | Add ->
@@ -201,7 +236,9 @@ let rec emit_expr ctx = function
       emit_inst ctx Xchgq [rax; rbx];
       emit_inst ctx Imulq [rdi];
       emit_inst ctx Xchgq [rbx; rax]
-    )
+    );
+
+    emit_label ctx lbl_end
   | Unop(op, arg) ->
     failwith "unop"
 
@@ -233,11 +270,15 @@ let emit prog c =
         ; tmp = 0
         ; max_tmp = 0
         ; const_float = []
+        ; next_label = 0
+        ; func_name = func.name
         }
     in
     emit_inst ctx Pushq [rsp];
     emit_inst ctx Movq [rsp; rbp];
+    emit_inst ctx Subq [FrameSize; rsp];
     emit_seq ctx func.body;
+    emit_inst ctx Addq [FrameSize; rsp];
     emit_inst ctx Popq [rbp];
     emit_inst ctx Ret [];
     ctx.insts |> List.rev |> List.iter (function
@@ -254,6 +295,10 @@ let emit prog c =
           | Imulq  -> "imulq "
           | Idivq  -> "idivq "
           | Xchgq  -> "xchgq "
+          | Cmpq   -> "cmpq  "
+          | Je     -> "je    "
+          | Jge    -> "jge   "
+          | Jle    -> "jle   "
           | Ret    -> "ret   "
           );
         args
@@ -264,6 +309,8 @@ let emit prog c =
             | Ind reg -> "*%" ^ string_of_reg reg
             | Rip name -> name ^ "(%rip)"
             | Rbp off -> string_of_int off ^ "(%rbp)"
+            | FrameSize -> "$" ^ string_of_int (ctx.max_tmp * 16)
+            | Sym name -> name
             )
           |> String.concat ", "
           |> output_string c;
@@ -282,5 +329,6 @@ let emit prog c =
       Printf.fprintf c "\n";
     end;
   );
+  output_string c "\n";
   output_string c (String.concat "\n" builtin_code);
   output_string c "\n";
