@@ -35,7 +35,6 @@ bs_expr:
   | e = bs_expr LPAREN args = bs_args RPAREN { Call(e, args) }
   | v = INT { Int v }
   | v = IDENT { Ident v }
-  | v = FLOAT { Float v }
 
 bs_args:
   | arg = bs_expr COMMA args = bs_args { arg :: args }

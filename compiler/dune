@@ -2,7 +2,7 @@
   (name compiler)
   (public_name compiler)
   (flags -w -39)
-  (modules_without_implementation ast ir))
+  (modules_without_implementation ast))
 
 (menhir
  (modules parser))

@@ -2,7 +2,6 @@
 type expr =
   | Int of int
   | Ident of string
-  | Float of float
   | Call of expr * expr list
 
 type stat =

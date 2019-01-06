@@ -1,3 +1,3 @@
 
 
-val emit : Ir.program -> out_channel -> unit
+val emit : Ast.program -> out_channel -> unit

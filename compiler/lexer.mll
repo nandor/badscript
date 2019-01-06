@@ -20,6 +20,5 @@ rule token = parse
   | ';'                     { SEMI }
   | "func"                  { FUNC }
   | id as name              { IDENT name }
-  | num as n0 '.' num as n1 { FLOAT (float_of_string (n0 ^ "." ^ n1)) }
   | num as n                { INT (int_of_string n) }
   | _ { raise (Error ("Unexpected character: " ^ Lexing.lexeme lexbuf)) }
